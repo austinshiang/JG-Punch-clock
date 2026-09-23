@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>雲端打卡考勤管理系統 V2.1</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    .calendar-day-tile {
+      min-height: 110px;
+      transition: all 0.15s ease-in-out;
+    }
+    .calendar-day-tile:hover {
+      background-color: #f8fafc;
+    }
+    .selected-leave-off {
+      background-color: #f3e8ff !important;
+      border: 2px solid #a855f7 !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- 登入彈窗 -->
+  <div id="loginOverlay" class="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 transition-all">
+    <div class="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-slate-100 relative overflow-hidden">
+      
+      <div class="text-center mb-6 relative">
+        <div class="inline-flex bg-indigo-600 text-white p-4 rounded-2xl shadow-lg shadow-indigo-500/30 mb-3">
+          <i class="fa-solid fa-calendar-check text-2xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-slate-800 tracking-tight">雲端考勤管理系統</h2>
+        <p class="text-xs text-indigo-600 font-bold mt-1">姜駒車業</p>
+      </div>
+
+      <div id="loginDbStatus" class="mb-4 text-xs p-3 rounded-xl border flex items-center justify-between bg-amber-50 border-amber-200 text-amber-800">
+        <div class="flex items-center space-x-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" id="loginStatusDot"></span>
+          <span id="loginStatusText" class="font-medium">連線檢查中...</span>
+        </div>
+        <button type="button" onclick="fetchSpreadsheetData(true)" class="text-[11px] underline font-semibold hover:text-indigo-600">重試連線</button>
+      </div>
+
+      <form onsubmit="handleLogin(event)" class="space-y-4 relative">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">使用者帳號</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
+              <i class="fa-solid fa-user text-sm"></i>
+            </span>
+            <input type="text" id="loginUsername" required placeholder="例如：user01" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">密碼</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
+              <i class="fa-solid fa-lock text-sm"></i>
+            </span>
+            <input type="password" id="loginPassword" required placeholder="請輸入密碼" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition">
+          </div>
+        </div>
+
+        <div id="loginError" class="hidden text-xs text-rose-600 bg-rose-50 border border-rose-200 p-3 rounded-xl flex items-center gap-2">
+          <i class="fa-solid fa-circle-exclamation text-rose-500"></i>
+          <span id="loginErrorText">帳號或密碼錯誤，請重新輸入。</span>
+        </div>
+
+        <button type="submit" id="btnLoginSubmit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl shadow-lg transition flex items-center justify-center space-x-2">
+          <span>登入系統</span>
+          <i class="fa-solid fa-arrow-right text-xs"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 頂部導覽列 -->
+  <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <div class="flex items-center space-x-3">
+        <div class="bg-white/10 text-white p-2.5 rounded-xl font-bold shadow-inner border border-white/20">
+          <i class="fa-solid fa-calendar-check text-xl text-emerald-300"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight tracking-wide flex items-center gap-2">
+            雲端打卡考勤系統
+            <span class="bg-emerald-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-xs">V2.1版</span>
+          </h1>
+          <p class="text-xs text-indigo-200">姜駒車業</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <div id="currentUserBadge" class="hidden sm:flex items-center space-x-2 bg-indigo-800/60 px-3 py-1 rounded-full text-xs font-semibold text-indigo-100 border border-indigo-400/20">
+          <i class="fa-solid fa-circle-user text-indigo-300"></i>
+          <span id="currentUserName">使用者</span>
+        </div>
+
+        <div id="lastSyncBadge" class="hidden md:flex items-center space-x-1.5 bg-indigo-900/60 text-indigo-200 text-[11px] px-2.5 py-1 rounded-lg border border-indigo-500/20">
+          <i class="fa-solid fa-hard-drive text-amber-400"></i>
+          <span>快取：<span id="lastSyncTimeText">未同步</span></span>
+        </div>
+
+        <div id="connectionBadge" class="flex items-center space-x-2 bg-indigo-800/80 text-indigo-100 text-xs px-3 py-1.5 rounded-full border border-indigo-500/30">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400" id="statusDot"></span>
+          <span id="statusText" class="font-medium">連線成功</span>
+        </div>
+
+        <button onclick="manualSyncSpreadsheetData()" class="bg-emerald-600 hover:bg-emerald-500 text-white p-2 rounded-xl text-xs font-semibold shadow-sm transition flex items-center space-x-1 px-3">
+          <i class="fa-solid fa-rotate" id="refreshIcon"></i>
+          <span class="hidden sm:inline">手動同步</span>
+        </button>
+
+        <button onclick="handleLogout()" class="bg-indigo-800 hover:bg-indigo-900 text-indigo-200 p-2 rounded-xl text-xs transition" title="登出">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主內容區塊 -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 space-y-5">
+
+    <!-- 錯誤診斷與 GAS URL 修改橫條 -->
+    <div id="diagErrorBanner" class="hidden bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-2xl shadow-sm space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2 font-bold text-sm">
+          <i class="fa-solid fa-triangle-exclamation text-rose-500 text-lg"></i>
+          <span>資料庫連線失敗 (HTTP 404 / 網址無效)</span>
+        </div>
+      </div>
+      <p id="diagErrorText" class="text-xs font-mono text-rose-700 leading-relaxed"></p>
+      
+      <div class="pt-2 border-t border-rose-200/80">
+        <label class="block text-xs font-bold text-rose-900 mb-1">🛠️ 快速更換 Google Apps Script API 網址：</label>
+        <div class="flex items-center gap-2">
+          <input type="text" id="customGasUrlInput" placeholder="請貼上以 /exec 結尾的 Web App 網址" class="flex-1 bg-white border border-rose-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 outline-none focus:ring-2 focus:ring-rose-500">
+          <button onclick="saveAndRetryCustomUrl()" class="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-sm transition whitespace-nowrap">
+            更新網址並重試
+          </button>
+        </div>
+        <p class="text-[11px] text-rose-600 mt-1">請至 Google Apps Script 點選「部署」➔「管理部署作業」複製以 <code class="bg-rose-100 px-1 rounded">/exec</code> 結尾的網頁應用程式網址。</p>
+      </div>
+    </div>
+
+    <!-- 月份與切換員工控制項 -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex items-center bg-slate-100 rounded-xl p-1 border border-slate-200">
+          <button onclick="changeMonth(-1)" class="p-2 hover:bg-white rounded-lg transition text-slate-600 hover:text-indigo-600">
+            <i class="fa-solid fa-chevron-left text-xs"></i>
+          </button>
+          <span id="currentMonthLabel" class="px-4 font-bold text-slate-700 min-w-[130px] text-center text-sm">2026年 09月</span>
+          <button onclick="changeMonth(1)" class="p-2 hover:bg-white rounded-lg transition text-slate-600 hover:text-indigo-600">
+            <i class="fa-solid fa-chevron-right text-xs"></i>
+          </button>
+        </div>
+
+        <button onclick="resetToCurrentMonth()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium px-3 py-2.5 rounded-xl border border-slate-200">
+          回到今月
+        </button>
+
+        <div id="employeeSelectWrapper" class="flex items-center space-x-2 border-l border-slate-200 pl-3 sm:pl-4">
+          <label class="text-xs font-semibold text-slate-500 whitespace-nowrap">
+            <i class="fa-solid fa-user-gear text-indigo-500"></i> 檢視人員:
+          </label>
+          <select id="employeeSelect" onchange="switchEmployee()" class="bg-white border border-slate-300 text-slate-700 text-sm rounded-xl focus:ring-2 focus:ring-indigo-500 p-2 font-semibold shadow-sm min-w-[140px] cursor-pointer">
+          </select>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <button id="btnToggleLeaveMode" onclick="toggleScheduleLeaveMode()" class="bg-purple-600 hover:bg-purple-700 text-white text-xs px-4 py-2.5 rounded-xl font-bold transition flex items-center space-x-2 shadow-sm">
+          <i class="fa-solid fa-calendar-plus"></i>
+          <span id="btnLeaveText">當月預先排假</span>
+        </button>
+        <button id="btnSubmitLeave" onclick="submitMonthlyLeave()" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2.5 rounded-xl font-bold transition flex items-center space-x-2 shadow-sm">
+          <i class="fa-solid fa-paper-plane"></i>
+          <span id="btnSubmitLeaveText">確認提交排假</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 預先排休提示橫條 -->
+    <div id="leaveModeBanner" class="hidden bg-purple-50 border border-purple-200 text-purple-900 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold">
+          <i class="fa-solid fa-hand-pointer text-lg"></i>
+        </div>
+        <div>
+          <h4 class="font-bold text-sm">每月排休設定模式中</h4>
+          <p class="text-xs text-purple-700 mt-0.5">直接點擊月曆上的日期即可快速標記或取消「每月排休」。設定完成後請點擊右側提交。</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-3 text-xs font-bold">
+        <div class="bg-white px-3.5 py-2 rounded-xl border border-purple-200 shadow-2xs">
+          當月排休: <span id="counterOffDays" class="text-purple-700 font-extrabold text-sm">0</span> / <span id="limitOffDays" class="text-slate-600">8</span> 天
+        </div>
+        <button onclick="toggleScheduleLeaveMode()" class="bg-purple-200 hover:bg-purple-300 text-purple-800 px-3.5 py-2 rounded-xl font-bold transition">
+          退出模式
+        </button>
+      </div>
+    </div>
+
+    <!-- 考勤統計面板 -->
+    <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+      <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs font-bold tracking-wider uppercase text-slate-500">遲到紀錄</span>
+          <div class="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-base border border-amber-100">
+            <i class="fa-solid fa-clock font-bold"></i>
+          </div>
+        </div>
+        <div>
+          <div id="statLateCount" class="text-3xl font-extrabold text-amber-600 tracking-tight">0 <span class="text-xs font-normal text-slate-500">次</span></div>
+          <p id="statLateMinutes" class="text-xs text-amber-600 font-semibold mt-1 flex items-center gap-1">
+            <i class="fa-solid fa-triangle-exclamation"></i> 累積遲到 0 分鐘
+          </p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs font-bold tracking-wider uppercase text-slate-500">加班總時數</span>
+          <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-base border border-indigo-100">
+            <i class="fa-solid fa-business-time"></i>
+          </div>
+        </div>
+        <div>
+          <div id="statOvertime" class="text-3xl font-extrabold text-indigo-600 tracking-tight">0 <span class="text-xs font-normal text-slate-500">小時</span></div>
+          <p class="text-xs text-slate-400 mt-1 font-medium">當月超出預設時間累計</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs font-bold tracking-wider uppercase text-slate-500">請假天數</span>
+          <div class="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-base border border-rose-100">
+            <i class="fa-solid fa-calendar-minus"></i>
+          </div>
+        </div>
+        <div>
+          <div id="statLeaveDays" class="text-3xl font-extrabold text-rose-600 tracking-tight">0 <span class="text-xs font-normal text-slate-500">天</span></div>
+          <p id="statLeaveDaysSubText" class="text-xs text-slate-400 mt-1 font-medium">當月請假累計 (含事假/病假/特休)</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs font-bold tracking-wider uppercase text-slate-500">年度特休額度</span>
+          <div class="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-base border border-amber-100">
+            <i class="fa-solid fa-umbrella-beach"></i>
+          </div>
+        </div>
+        <div>
+          <div id="statSpecialLeave" class="text-3xl font-extrabold text-amber-600 tracking-tight">0 <span class="text-xs font-normal text-slate-500">小時</span></div>
+          <p id="statSpecialLeaveSubText" class="text-xs text-slate-400 mt-1 font-medium">剩餘 0 天 (0小時)</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 月曆視圖 -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="grid grid-cols-7 bg-slate-100/90 border-b border-slate-200 text-center font-bold text-xs text-slate-600 py-3.5 uppercase tracking-wider">
+        <div class="text-rose-500">週日</div>
+        <div>週一</div>
+        <div>週二</div>
+        <div>週三</div>
+        <div>週四</div>
+        <div>週五</div>
+        <div class="text-indigo-600">週六</div>
+      </div>
+
+      <div id="calendarGrid" class="grid grid-cols-7 divide-x divide-y divide-slate-100 min-h-[600px] bg-white">
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 單日詳細與請假設定彈窗 -->
+  <div id="dayModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col">
+      
+      <div class="bg-slate-900 text-white p-5 flex justify-between items-center shrink-0">
+        <div>
+          <h3 id="modalDateTitle" class="text-lg font-bold">2026-09-22</h3>
+          <p id="modalUserSubTitle" class="text-xs text-slate-400 mt-0.5">考勤詳細記錄與請假申請</p>
+        </div>
+        <button onclick="closeDayModal()" class="text-slate-400 hover:text-white p-2 rounded-xl">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4 overflow-y-auto flex-1">
+        <div id="modalStatusBanner" class="p-3.5 rounded-xl bg-slate-100 flex items-center space-x-3 border">
+          <i id="modalStatusIcon" class="fa-solid fa-circle-info text-slate-500 text-xl"></i>
+          <div>
+            <div id="modalStatusTitle" class="font-bold text-sm text-slate-800">無紀錄</div>
+            <div id="modalStatusDesc" class="text-xs text-slate-500">當天尚無打卡與排休資料</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+            <span class="text-[11px] font-bold text-slate-400 block mb-1 uppercase tracking-wider">上班打卡時間</span>
+            <div id="viewClockIn" class="text-lg font-extrabold font-mono text-slate-800">--:--</div>
+          </div>
+          <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+            <span class="text-[11px] font-bold text-slate-400 block mb-1 uppercase tracking-wider">下班打卡時間</span>
+            <div id="viewClockOut" class="text-lg font-extrabold font-mono text-slate-800">--:--</div>
+          </div>
+        </div>
+
+        <div class="space-y-2 pt-1">
+          <div class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border text-xs">
+            <span class="font-semibold text-slate-500">考勤 / 請假類別</span>
+            <span id="viewStatus" class="font-bold text-indigo-600 text-sm">正常</span>
+          </div>
+
+          <div class="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 text-xs">
+            <span class="font-bold text-indigo-900 block mb-1 flex items-center gap-1">
+              <i class="fa-solid fa-comment-dots text-indigo-500"></i> LINE 打卡 / 備註內容
+            </span>
+            <span id="viewNotes" class="text-slate-700 font-medium block leading-relaxed italic">無備註紀錄</span>
+          </div>
+        </div>
+
+        <!-- 請假表單 -->
+        <div class="border-t pt-4 mt-2">
+          <div class="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <h4 class="font-bold text-xs text-amber-900 flex items-center gap-1.5">
+                <i class="fa-solid fa-calendar-plus text-amber-600"></i> 當日請假 / 特休設定
+              </h4>
+              <span class="text-[10px] text-amber-700 font-medium">即時寫入雲端</span>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">選擇請假類別</label>
+              <select id="singleLeaveType" onchange="toggleSingleLeaveTypeFields()" class="w-full bg-white border border-amber-300 rounded-xl p-2.5 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-amber-400">
+                <option value="特休">特休 (小時制扣額度)</option>
+                <option value="事假">事假</option>
+                <option value="病假">病假</option>
+                <option value="公假">公假</option>
+                <option value="喪假">喪假/婚假</option>
+                <option value="取消請假">-- 取消請假 / 恢復出勤 --</option>
+              </select>
+            </div>
+
+            <div id="singleSpecialLeaveTimeGroup" class="space-y-2">
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-[10px] font-semibold text-slate-500 mb-1">請假開始時間</label>
+                  <select id="singleSpecialLeaveStart" onchange="calcSingleSpecialLeaveHours()" class="w-full bg-white border border-amber-200 rounded-lg p-2 text-xs font-semibold text-slate-800 outline-none">
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[10px] font-semibold text-slate-500 mb-1">請假結束時間</label>
+                  <select id="singleSpecialLeaveEnd" onchange="calcSingleSpecialLeaveHours()" class="w-full bg-white border border-amber-200 rounded-lg p-2 text-xs font-semibold text-slate-800 outline-none">
+                  </select>
+                </div>
+              </div>
+
+              <div id="singleSpecialSummaryBox" class="p-2 rounded-lg bg-amber-100/70 border border-amber-300 text-center text-xs">
+                <div class="text-amber-900 font-bold text-xs">請假總時間：<span id="singleSummaryTotalHours" class="text-amber-700 font-extrabold">1.0</span> 小時</div>
+                <div id="singleSummaryLunchNote" class="text-[9px] text-amber-700 hidden">(已扣除 12:00~13:00 午休 1 小時)</div>
+              </div>
+            </div>
+
+            <div id="singleGeneralLeaveHoursGroup" class="hidden">
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">請假時數</label>
+              <select id="singleGeneralLeaveHours" class="w-full bg-white border border-amber-300 rounded-xl p-2.5 text-xs font-semibold text-slate-800">
+                <option value="8">全天 (8 小時)</option>
+                <option value="4">半天 (4 小時)</option>
+                <option value="2">2 小時</option>
+                <option value="1">1 小時</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">請假事由 / 備註</label>
+              <input type="text" id="singleLeaveReason" placeholder="例：家庭照顧、看醫生" class="w-full bg-white border border-amber-200 rounded-xl p-2 text-xs text-slate-800 outline-none">
+            </div>
+
+            <button id="btnSubmitSingleLeave" onclick="submitSingleDayLeave()" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs py-2.5 rounded-xl shadow-sm transition flex items-center justify-center gap-1.5">
+              <i class="fa-solid fa-paper-plane text-xs"></i>
+              <span id="btnSubmitSingleLeaveText">儲存請假設定</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="bg-slate-50 px-6 py-4 flex justify-end border-t border-slate-100 shrink-0">
+        <button onclick="closeDayModal()" class="px-5 py-2.5 rounded-xl bg-slate-800 text-white font-semibold text-xs">關閉視窗</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript 核心邏輯 -->
+  <script>
+    var defaultGASUrl = "https://script.google.com/macros/s/AKfycbzTKudype-K-wT58Zhr7HqRmtO5nl7vGGo4rd8B-GRM9Fbyn8brusLdGXTW4XykwrV7/exec";
+    var gasUrl = localStorage.getItem("att_app_custom_gas_url") || defaultGASUrl;
+    
+    var CACHE_KEY_ACCOUNTS = "att_app_accounts_cache";
+    var CACHE_KEY_ATTENDANCE = "att_app_attendance_cache";
+    var CACHE_KEY_LAST_SYNC = "att_app_last_sync_timestamp";
+
+    var currentDate = new Date();
+    var currentYear = currentDate.getFullYear();
+    var currentMonth = currentDate.getMonth();
+    var selectedUsername = "";
+    var currentUser = null;
+
+    var accountsList = [];
+    var attendanceRecords = [];
+
+    var isScheduleLeaveMode = false;
+    var selectedLeaveItems = [];
+    var activeTargetDate = "";
+
+    window.onload = function() {
+      var customUrlInput = document.getElementById("customGasUrlInput");
+      if (customUrlInput) customUrlInput.value = gasUrl;
+
+      var loadedFromCache = loadDataFromLocalStorage();
+      if (!loadedFromCache) {
+        logDiag("無本地快取資料，發起首次線上同步...");
+        fetchSpreadsheetData(true);
+      } else {
+        logDiag("成功載入本地快取資料。");
+        setStatusUI("success", "已連線");
+      }
+    };
+
+    function saveAndRetryCustomUrl() {
+      var input = document.getElementById("customGasUrlInput");
+      if (!input) return;
+      var newUrl = input.value.trim();
+      if (!newUrl) {
+        logDiag("網址不可為空");
+        return;
+      }
+      gasUrl = newUrl;
+      localStorage.setItem("att_app_custom_gas_url", newUrl);
+      
+      var errBanner = document.getElementById("diagErrorBanner");
+      if (errBanner) errBanner.classList.add("hidden");
+
+      logDiag("已更新 API 網址為：" + newUrl);
+      fetchSpreadsheetData(true);
+    }
+
+    function logDiag(msg) {
+      console.log(`[DIAG V2.1] ${msg}`);
+      var diagText = document.getElementById("diagErrorText");
+      if (diagText && msg.includes("連線失敗")) {
+        diagText.innerText = msg;
+        var errBanner = document.getElementById("diagErrorBanner");
+        if (errBanner) errBanner.classList.remove("hidden");
+      }
+    }
+
+    function parseNumericValue(val) {
+      if (val === null || val === undefined || val === "") return 0;
+      var strVal = String(val).trim();
+      if (strVal.indexOf("#") !== -1 || strVal.indexOf("ERR") !== -1 || strVal.indexOf("NUM") !== -1 || strVal.indexOf("VALUE") !== -1) return 0;
+      if (typeof val === "number") return isNaN(val) ? 0 : val;
+      var str = strVal.replace(/[^\d.]/g, "");
+      var num = parseFloat(str);
+      return isNaN(num) ? 0 : num;
+    }
+
+    function normalizeDate(val) {
+      if (!val) return "";
+      var str = String(val).trim();
+      if (str.indexOf("T") !== -1) str = str.split("T")[0];
+      str = str.replace(/\//g, "-");
+      var parts = str.split("-");
+      if (parts.length === 3) {
+        var y = parts[0];
+        var m = String(parts[1]).padStart(2, "0");
+        var d = String(parts[2]).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      }
+      return str.substring(0, 10);
+    }
+
+    function normalizeTime(val) {
+      if (!val) return "";
+      var str = String(val).trim();
+      if (str.indexOf("T") !== -1) {
+        var dateObj = new Date(str);
+        if (!isNaN(dateObj.getTime())) {
+          var hh = String(dateObj.getHours()).padStart(2, "0");
+          var mm = String(dateObj.getMinutes()).padStart(2, "0");
+          return `${hh}:${mm}`;
+        }
+      }
+      var parts = str.split(":");
+      if (parts.length >= 2) {
+        var h = String(parts[0]).padStart(2, "0");
+        var m = String(parts[1]).padStart(2, "0");
+        return `${h}:${m}`;
+      }
+      return str;
+    }
+
+    function timeToMinutes(timeStr) {
+      if (!timeStr) return 0;
+      var parts = String(timeStr).trim().split(":");
+      if (parts.length < 2) return 0;
+      var h = parseInt(parts[0], 10);
+      var m = parseInt(parts[1], 10);
+      if (isNaN(h) || isNaN(m)) return 0;
+      return h * 60 + m;
+    }
+
+    /* 遲到計算：15分鐘以內寬限不計遲到；超過15分鐘（如10:16）顯出實際遲到16分鐘 */
+    function calculateLateMinutes(actualStr, stdStr) {
+      if (!actualStr || !stdStr) return 0;
+      var actualMins = timeToMinutes(actualStr);
+      var stdMins = timeToMinutes(stdStr);
+      if (actualMins === 0 || stdMins === 0) return 0;
+      var diff = actualMins - stdMins;
+      if (diff <= 15) return 0; // 15分鐘緩衝寬限期
+      return diff; // 16分鐘起，精準計算實際遲到分鐘數
+    }
+
+    function getComputedAttendanceStatus(record, userAcc) {
+      if (!record) return { statusText: "未打卡", badgeText: "", isLate: false, isEarly: false, lateMins: 0, badgeClass: "" };
+      
+      var dbStatus = record.status || "正常";
+      
+      if (dbStatus === "排休" || record.isScheduledLeave) {
+        return { statusText: "排休", badgeText: "排休", isLeave: true, badgeClass: "bg-purple-100 text-purple-800 border border-purple-200" };
+      }
+      if (dbStatus === "特休") {
+        return { statusText: `特休 (${record.leaveHours || 1}h)`, badgeText: `特休(${record.leaveHours || 1}h)`, isLeave: true, badgeClass: "bg-amber-100 text-amber-900 border border-amber-300" };
+      }
+      if (dbStatus.indexOf("假") !== -1 && dbStatus !== "正常") {
+        return { statusText: dbStatus, badgeText: dbStatus, isLeave: true, badgeClass: "bg-rose-100 text-rose-800 border border-rose-200" };
+      }
+
+      var stdStart = (userAcc && userAcc.standardStart) ? userAcc.standardStart : "09:00";
+      var stdEnd = (userAcc && userAcc.standardEnd) ? userAcc.standardEnd : "18:00";
+
+      var lateMins = 0;
+      var isLate = false;
+      var isEarly = false;
+
+      if (record.clockIn) {
+        lateMins = calculateLateMinutes(record.clockIn, stdStart);
+        if (lateMins > 0) isLate = true;
+      }
+
+      if (record.clockOut) {
+        var outMins = timeToMinutes(record.clockOut);
+        var stdEndMins = timeToMinutes(stdEnd);
+        if (outMins > 0 && stdEndMins > 0 && outMins < stdEndMins) {
+          isEarly = true;
+        }
+      }
+
+      if (dbStatus.indexOf("遲到") !== -1 && lateMins === 0) isLate = true;
+      if (dbStatus.indexOf("早退") !== -1) isEarly = true;
+
+      if (isLate && isEarly) {
+        var txt = lateMins > 0 ? `遲到${lateMins}分/早退` : "遲到/早退";
+        return { statusText: txt, badgeText: txt, isLate: true, isEarly: true, lateMins: lateMins, badgeClass: "bg-amber-100 text-amber-900 border border-amber-300" };
+      } else if (isLate) {
+        var txt = lateMins > 0 ? `遲到 ${lateMins}分鐘` : "遲到";
+        var badgeTxt = lateMins > 0 ? `遲到 ${lateMins}分` : "遲到";
+        return { statusText: txt, badgeText: badgeTxt, isLate: true, isEarly: false, lateMins: lateMins, badgeClass: "bg-amber-100 text-amber-800 border border-amber-300" };
+      } else if (isEarly) {
+        return { statusText: "早退", badgeText: "早退", isLate: false, isEarly: true, lateMins: 0, badgeClass: "bg-orange-100 text-orange-800 border border-orange-200" };
+      } else if (record.clockIn || record.clockOut) {
+        return { statusText: "正常出勤", badgeText: "正常", isLate: false, isEarly: false, lateMins: 0, badgeClass: "bg-emerald-100 text-emerald-800 border border-emerald-200" };
+      }
+
+      return { statusText: "未打卡", badgeText: "", isLate: false, isEarly: false, lateMins: 0, badgeClass: "" };
+    }
+
+    function setStatusUI(type, text) {
+      var statusDot = document.getElementById("statusDot");
+      var statusText = document.getElementById("statusText");
+      var loginDot = document.getElementById("loginStatusDot");
+      var loginText = document.getElementById("loginStatusText");
+
+      var colorClass = "bg-emerald-400";
+      if (type === "warning") colorClass = "bg-amber-400";
+      if (type === "error") colorClass = "bg-rose-500";
+
+      if (statusDot) statusDot.className = `w-2.5 h-2.5 rounded-full ${colorClass}`;
+      if (statusText) statusText.innerText = text;
+      if (loginDot) loginDot.className = `w-2.5 h-2.5 rounded-full ${colorClass}`;
+      if (loginText) loginText.innerText = text;
+    }
+
+    function handleLogin(event) {
+      event.preventDefault();
+      var u = document.getElementById("loginUsername").value.trim();
+      var p = document.getElementById("loginPassword").value.trim();
+      var errBox = document.getElementById("loginError");
+
+      var matched = accountsList.find(a => a.username.toLowerCase() === u.toLowerCase() && a.password === p);
+
+      if (matched) {
+        currentUser = matched;
+        selectedUsername = matched.username;
+        if (errBox) errBox.classList.add("hidden");
+        document.getElementById("loginOverlay").classList.add("hidden");
+        document.getElementById("currentUserBadge").classList.remove("hidden");
+        document.getElementById("currentUserName").innerText = matched.name;
+
+        populateEmployeeDropdown();
+        updateMonthLabel();
+        renderCalendar();
+        calculateMonthlyStats();
+        checkLeaveLockStatus();
+      } else {
+        if (errBox) {
+          errBox.classList.remove("hidden");
+          document.getElementById("loginErrorText").innerText = "帳號或密碼錯誤，請重新輸入。";
+        }
+      }
+    }
+
+    function handleLogout() {
+      currentUser = null;
+      selectedUsername = "";
+      document.getElementById("loginOverlay").classList.remove("hidden");
+      document.getElementById("currentUserBadge").classList.add("hidden");
+      document.getElementById("loginUsername").value = "";
+      document.getElementById("loginPassword").value = "";
+    }
+
+    function populateEmployeeDropdown() {
+      var select = document.getElementById("employeeSelect");
+      var wrapper = document.getElementById("employeeSelectWrapper");
+      if (!select) return;
+
+      select.innerHTML = "";
+
+      if (currentUser && currentUser.role === "Admin") {
+        if (wrapper) wrapper.classList.remove("hidden");
+        accountsList.forEach(acc => {
+          var opt = document.createElement("option");
+          opt.value = acc.username;
+          opt.innerText = `${acc.name} (${acc.username})`;
+          select.appendChild(opt);
+        });
+        select.value = selectedUsername;
+      } else {
+        if (wrapper) wrapper.classList.add("hidden");
+        var opt = document.createElement("option");
+        opt.value = currentUser ? currentUser.username : "";
+        opt.innerText = currentUser ? `${currentUser.name} (${currentUser.username})` : "";
+        select.appendChild(opt);
+        select.value = currentUser ? currentUser.username : "";
+      }
+    }
+
+    function switchEmployee() {
+      var select = document.getElementById("employeeSelect");
+      if (select) {
+        selectedUsername = select.value;
+        selectedLeaveItems = [];
+        renderCalendar();
+        calculateMonthlyStats();
+        checkLeaveLockStatus();
+      }
+    }
+
+    function checkLeaveLockStatus() {
+      var userAcc = accountsList.find(a => a.username.toLowerCase() === selectedUsername.toLowerCase());
+      var yearMonthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+      var btn = document.getElementById("btnToggleLeaveMode");
+      var btnText = document.getElementById("btnLeaveText");
+
+      if (userAcc && userAcc.submittedLeaveMonths && userAcc.submittedLeaveMonths.indexOf(yearMonthStr) !== -1) {
+        if (btn) {
+          btn.disabled = true;
+          btn.className = "bg-slate-300 text-slate-500 text-xs px-4 py-2.5 rounded-xl font-bold cursor-not-allowed flex items-center space-x-2 shadow-none";
+        }
+        if (btnText) btnText.innerText = "當月排假已鎖定";
+        return true;
+      } else {
+        if (btn) {
+          btn.disabled = false;
+          btn.className = "bg-purple-600 hover:bg-purple-700 text-white text-xs px-4 py-2.5 rounded-xl font-bold transition flex items-center space-x-2 shadow-sm";
+        }
+        if (btnText) btnText.innerText = isScheduleLeaveMode ? "取消排假模式" : "當月預先排假";
+        return false;
+      }
+    }
+
+    function loadDataFromLocalStorage() {
+      try {
+        var accRaw = localStorage.getItem(CACHE_KEY_ACCOUNTS);
+        var attRaw = localStorage.getItem(CACHE_KEY_ATTENDANCE);
+        var syncTime = localStorage.getItem(CACHE_KEY_LAST_SYNC);
+
+        if (accRaw) accountsList = JSON.parse(accRaw);
+        if (attRaw) attendanceRecords = JSON.parse(attRaw);
+
+        if (syncTime) {
+          var syncBadge = document.getElementById("lastSyncBadge");
+          var syncText = document.getElementById("lastSyncTimeText");
+          if (syncBadge) syncBadge.classList.remove("hidden");
+          if (syncText) syncText.innerText = syncTime;
+        }
+
+        return (accountsList.length > 0);
+      } catch (e) {
+        logDiag("解析本地快取發生錯誤: " + e.message);
+        return false;
+      }
+    }
+
+    function saveDataToLocalStorage() {
+      try {
+        localStorage.setItem(CACHE_KEY_ACCOUNTS, JSON.stringify(accountsList));
+        localStorage.setItem(CACHE_KEY_ATTENDANCE, JSON.stringify(attendanceRecords));
+        
+        var nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        localStorage.setItem(CACHE_KEY_LAST_SYNC, nowStr);
+
+        var syncBadge = document.getElementById("lastSyncBadge");
+        var syncText = document.getElementById("lastSyncTimeText");
+        if (syncBadge) syncBadge.classList.remove("hidden");
+        if (syncText) syncText.innerText = nowStr;
+      } catch (e) {
+        logDiag("寫入本地快取失敗: " + e.message);
+      }
+    }
+
+    function manualSyncSpreadsheetData() {
+      fetchSpreadsheetData(true);
+    }
+
+    async function fetchSpreadsheetData(forceNetworkFetch) {
+      if (!forceNetworkFetch && accountsList.length > 0) {
+        logDiag("跳過網路抓取，使用現有快取資料。");
+        return;
+      }
+
+      var refreshIcon = document.getElementById("refreshIcon");
+      if (refreshIcon) refreshIcon.classList.add("fa-spin");
+
+      try {
+        if (!gasUrl) throw new Error("未設定 GAS Web App URL");
+
+        var allDataRes = await fetch(gasUrl + "?action=getAllData");
+        if (!allDataRes.ok) {
+          throw new Error(`HTTP 狀態碼: ${allDataRes.status}`);
+        }
+        
+        var rawText = await allDataRes.text();
+        if (rawText.trim().startsWith("<")) {
+          throw new Error("GAS 權限受限或回應頁面不正確！請確認部署「誰有存取權」設為「所有人 (Anyone)」。");
+        }
+
+        var parsedData = JSON.parse(rawText);
+        var rawAccounts = parsedData.accounts || [];
+        var rawAttendance = parsedData.attendance || [];
+
+        /* 嚴格參照資料庫中的 specialLeaveDays，不再預設 fallback */
+        accountsList = rawAccounts.map(acc => ({
+          username: String(acc.username || "").trim(),
+          password: String(acc.password || "").trim(),
+          name: String(acc.name || acc.username || "").trim(),
+          role: String(acc.role || "User").trim(),
+          standardStart: normalizeTime(acc.standardStart) || "09:00",
+          standardEnd: normalizeTime(acc.standardEnd) || "18:00",
+          submittedLeaveMonths: String(acc.submittedLeaveMonths || "").trim(),
+          specialLeaveDays: (acc.specialLeaveDays !== undefined && acc.specialLeaveDays !== null && acc.specialLeaveDays !== "") ? parseNumericValue(acc.specialLeaveDays) : 0,
+          monthlyOffDays: (acc.monthlyOffDays !== undefined && acc.monthlyOffDays !== null && acc.monthlyOffDays !== "") ? parseNumericValue(acc.monthlyOffDays) : 8
+        }));
+
+        attendanceRecords = rawAttendance.map(rec => ({
+          date: normalizeDate(rec.date),
+          username: String(rec.username || "").trim(),
+          name: String(rec.name || "").trim(),
+          clockIn: normalizeTime(rec.clockIn),
+          clockOut: normalizeTime(rec.clockOut),
+          status: String(rec.status || "正常").trim(),
+          overtime: parseNumericValue(rec.overtime),
+          notes: String(rec.notes || "").trim(),
+          isScheduledLeave: rec.isScheduledLeave || 0,
+          leaveHours: parseNumericValue(rec.leaveHours) || 0
+        }));
+
+        saveDataToLocalStorage();
+        setStatusUI("success", "已同步");
+        
+        var errBanner = document.getElementById("diagErrorBanner");
+        if (errBanner) errBanner.classList.add("hidden");
+
+      } catch (err) {
+        logDiag("連線失敗錯誤詳情: " + err.message);
+        setStatusUI("error", "同步失敗: " + err.message);
+      } finally {
+        if (refreshIcon) refreshIcon.classList.remove("fa-spin");
+        if (currentUser) {
+          populateEmployeeDropdown();
+          renderCalendar();
+          calculateMonthlyStats();
+          checkLeaveLockStatus();
+        }
+      }
+    }
+
+    function updateMonthLabel() {
+      var lbl = document.getElementById("currentMonthLabel");
+      if (lbl) {
+        var mStr = String(currentMonth + 1).padStart(2, "0");
+        lbl.innerText = `${currentYear}年 ${mStr}月`;
+      }
+    }
+
+    function changeMonth(delta) {
+      currentMonth += delta;
+      if (currentMonth > 11) {
+        currentMonth = 0;
+        currentYear++;
+      } else if (currentMonth < 0) {
+        currentMonth = 11;
+        currentYear--;
+      }
+      selectedLeaveItems = [];
+      updateMonthLabel();
+      renderCalendar();
+      calculateMonthlyStats();
+      checkLeaveLockStatus();
+    }
+
+    function resetToCurrentMonth() {
+      var now = new Date();
+      currentYear = now.getFullYear();
+      currentMonth = now.getMonth();
+      selectedLeaveItems = [];
+      updateMonthLabel();
+      renderCalendar();
+      calculateMonthlyStats();
+      checkLeaveLockStatus();
+    }
+
+    function toggleScheduleLeaveMode() {
+      if (checkLeaveLockStatus()) {
+        logDiag("當月排假已鎖定，無法進入排假模式。");
+        return;
+      }
+      isScheduleLeaveMode = !isScheduleLeaveMode;
+      var banner = document.getElementById("leaveModeBanner");
+      var btnSubmit = document.getElementById("btnSubmitLeave");
+      var btnLeaveText = document.getElementById("btnLeaveText");
+
+      if (isScheduleLeaveMode) {
+        if (banner) banner.classList.remove("hidden");
+        if (btnSubmit) btnSubmit.classList.remove("hidden");
+        if (btnLeaveText) btnLeaveText.innerText = "取消排假模式";
+      } else {
+        if (banner) banner.classList.add("hidden");
+        if (btnSubmit) btnSubmit.classList.add("hidden");
+        if (btnLeaveText) btnLeaveText.innerText = "當月預先排假";
+        selectedLeaveItems = [];
+      }
+      updateLeaveCounters();
+      renderCalendar();
+    }
+
+    function toggleDateScheduleOff(dateStr) {
+      var userAcc = accountsList.find(a => a.username.toLowerCase() === selectedUsername.toLowerCase()) || { monthlyOffDays: 8 };
+      var existingIdx = selectedLeaveItems.findIndex(i => i.date === dateStr);
+
+      if (existingIdx !== -1) {
+        selectedLeaveItems.splice(existingIdx, 1);
+      } else {
+        var currentOffCount = selectedLeaveItems.filter(i => i.type === "排休").length;
+        if (currentOffCount >= userAcc.monthlyOffDays) {
+          logDiag(`已達到當月排休上限 (${userAcc.monthlyOffDays}天)`);
+          return;
+        }
+        selectedLeaveItems.push({ date: dateStr, type: "排休", hours: 8 });
+      }
+
+      updateLeaveCounters();
+      renderCalendar();
+    }
+
+    function updateLeaveCounters() {
+      var userAcc = accountsList.find(a => a.username.toLowerCase() === selectedUsername.toLowerCase()) || { monthlyOffDays: 8 };
+      var offCount = selectedLeaveItems.filter(i => i.type === "排休").length;
+
+      document.getElementById("counterOffDays").innerText = offCount;
+      document.getElementById("limitOffDays").innerText = userAcc.monthlyOffDays;
+
+      var btnSubmit = document.getElementById("btnSubmitLeave");
+      var btnSubmitText = document.getElementById("btnSubmitLeaveText");
+      if (btnSubmitText) {
+        btnSubmitText.innerText = `確認提交 (${offCount} 天排休)`;
+      }
+
+      if (offCount > userAcc.monthlyOffDays) {
+        if (btnSubmit) btnSubmit.disabled = true;
+      } else {
+        if (btnSubmit) btnSubmit.disabled = false;
+      }
+    }
+
+    async function submitMonthlyLeave() {
+      if (selectedLeaveItems.length === 0) {
+        logDiag("提示: 未點選排休日期");
+        return;
+      }
+
+      var userAcc = accountsList.find(a => a.username.toLowerCase() === selectedUsername.toLowerCase()) || { monthlyOffDays: 8 };
+      var totalOffDays = selectedLeaveItems.filter(i => i.type === "排休").length;
+      if (totalOffDays > userAcc.monthlyOffDays) {
+        logDiag(`錯誤: 排休天數 (${totalOffDays}天) 超出每月限制 (${userAcc.monthlyOffDays}天)`);
+        return;
+      }
+
+      var yearMonthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+      var btnSubmit = document.getElementById("btnSubmitLeave");
+      var btnSubmitText = document.getElementById("btnSubmitLeaveText");
+      
+      if (btnSubmit) btnSubmit.disabled = true;
+      if (btnSubmitText) btnSubmitText.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i> 傳送中...`;
+
+      try {
+        var leaveJson = JSON.stringify(selectedLeaveItems);
+        var url = `${gasUrl}?action=submitLeave&username=${encodeURIComponent(selectedUsername)}&yearMonth=${encodeURIComponent(yearMonthStr)}&leaveData=${encodeURIComponent(leaveJson)}`;
+        logDiag("發送排假請求至 API");
+
+        var res = await fetch(url);
+        var rawText = await res.text();
+        var json = JSON.parse(rawText);
+
+        if (json.result === "success") {
+          isScheduleLeaveMode = false;
+          document.getElementById("leaveModeBanner").classList.add("hidden");
+          document.getElementById("btnSubmitLeave").classList.add("hidden");
+          selectedLeaveItems = [];
+          
+          await fetchSpreadsheetData(true);
+        } else {
+          logDiag("提交排假失敗: " + (json.message || "未知錯誤"));
+        }
+      } catch (e) {
+        logDiag("提交排假發生例外錯誤: " + e.message);
+      } finally {
+        if (btnSubmit) btnSubmit.disabled = false;
+        if (btnSubmitText) btnSubmitText.innerText = `確認提交排假`;
+      }
+    }
+
+    function renderCalendar() {
+      var grid = document.getElementById("calendarGrid");
+      if (!grid) return;
+
+      grid.innerHTML = "";
+
+      var userAcc = accountsList.find(a => a.username.toLowerCase() === selectedUsername.toLowerCase()) || { standardStart: "09:00", standardEnd: "18:00" };
+      var firstDay = new Date(currentYear, currentMonth, 1);
+      var startingDay = firstDay.getDay();
+      var monthDays = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+      for (var i = 0; i < startingDay; i++) {
+        var emptyTile = document.createElement("div");
+        emptyTile.className = "bg-slate-50/50 calendar-day-tile p-2 border-b border-r border-slate-100 min-h-[110px]";
+        grid.appendChild(emptyTile);
+      }
+
+      for (var day = 1; day <= monthDays; day++) {
+        var mStr = String(currentMonth + 1).padStart(2, "0");
+        var dStr = String(day).padStart(2, "0");
+        var dateStr = `${currentYear}-${mStr}-${dStr}`;
+
+        var record = attendanceRecords.find(r => r.username.toLowerCase() === selectedUsername.toLowerCase() && r.date === dateStr);
+        var isScheduledInSession = selectedLeaveItems.some(i => i.date === dateStr);
+
+        var tile = document.createElement("div");
+        tile.className = "calendar-day-tile p-2 border-b border-r border-slate-100 flex flex-col justify-between cursor-pointer relative bg-white";
+
+        if (isScheduleLeaveMode && isScheduledInSession) {
+          tile.classList.add("selected-leave-off");
+        }
+
+        var dateHeader = document.createElement("div");
+        dateHeader.className = "flex justify-between items-center mb-1";
+        
+        var dayNum = document.createElement("span");
+        dayNum.className = "font-extrabold text-xs text-slate-700";
+        dayNum.innerText = day;
+        dateHeader.appendChild(dayNum);
+
+        var badge = document.createElement("span");
+        badge.className = "text-[10px] px-1.5 py-0.5 rounded-md font-bold";
+
+        if (record) {
+          var statusInfo = getComputedAttendanceStatus(record, userAcc);
+          if (statusInfo.badgeText) {
+            badge.className += " " + statusInfo.badgeClass;
+            badge.innerText = statusInfo.badgeText;
+            dateHeader.appendChild(badge);
+          }
+        } else if (isScheduledInSession) {
+          badge.className += " bg-purple-100 text-purple-800 border border-purple-200";
+          badge.innerText = "預排休";
+          dateHeader.appendChild(badge);
+        }
+
+        tile.appendChild(dateHeader);
+
+        var contentBox = document.createElement("div");
+        contentBox.className = "space-y-1 text-[11px] my-auto";
+
+        if (record && (record.clockIn || record.clockOut)) {
+          var timeBox = document.createElement("div");
+          timeBox.className = "font-mono font-medium text-slate-600 leading-tight";
+          timeBox.innerHTML = `<div><i class="fa-solid fa-arrow-right-to-bracket text-[9px] text-emerald-500 mr-1"></i>${record.clockIn || '--:--'}</div><div><i class="fa-solid fa-arrow-right-from-bracket text-[9px] text-rose-400 mr-1"></i>${record.clockOut || '--:--'}</div>`;
+          contentBox.appendChild(timeBox);
+        }
+
+        if (record && record.notes) {
+          var noteTag = document.createElement("div");
+          noteTag.className = "text-[10px] text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 truncate mt-1 font-medium";
+          noteTag.title = record.notes;
+          noteTag.innerText = record.notes;
+          contentBox.appendChild(noteTag);
+        }
+
+        tile.appendChild(contentBox);
+
+        (function(dStrVal, recVal) {
+          tile.onclick = function() {
+            openDayModal(dStrVal, recVal);
+          };
+        })(dateStr, record);
+
+        grid.appendChild(tile);
+      }
+    }
+
+    function calculateMonthlyStats() {
+      var monthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+      var userAcc = accountsList.find(a => a.username.toLowerCase() === selectedUsername.toLowerCase()) || { standardStart: "09:00", standardEnd: "18:00", specialLeaveDays: 0 };
+
+      var monthRecords = attendanceRecords.filter(r => r.username.toLowerCase() === selectedUsername.toLowerCase() && r.date.startsWith(monthStr));
+
+      var lateCount = 0;
+      var earlyCount = 0;
+      var totalLateMins = 0;
+      var totalOvertimeHours = 0;
+      var leaveDaysCount = 0;
+
+      monthRecords.forEach(rec => {
+        var statusInfo = getComputedAttendanceStatus(rec, userAcc);
+
+        if (statusInfo.isLate) {
+          lateCount++;
+          totalLateMins += statusInfo.lateMins;
+        }
+
+        if (statusInfo.isEarly) {
+          earlyCount++;
+        }
+
+        var ot = parseNumericValue(rec.overtime);
+        if (!isNaN(ot) && ot > 0) {
+          totalOvertimeHours += ot;
+        }
+
+        if (rec.status && (rec.status.indexOf("假") !== -1 || rec.status === "特休")) {
+          if (rec.status !== "排休") leaveDaysCount++;
+        }
+      });
+
+      var yearStr = String(currentYear);
+      var yearRecords = attendanceRecords.filter(r => r.username.toLowerCase() === selectedUsername.toLowerCase() && r.date.startsWith(yearStr));
+      var usedSpecialHours = 0;
+
+      yearRecords.forEach(rec => {
+        if (rec.status === "特休") {
+          usedSpecialHours += (rec.leaveHours || 8);
+        }
+      });
+
+      /* 嚴格參照資料庫特休天數，不預設最低數 */
+      var dbSpecialLeaveDays = (userAcc && userAcc.specialLeaveDays !== undefined && userAcc.specialLeaveDays !== null) ? parseNumericValue(userAcc.specialLeaveDays) : 0;
+      var totalSpecialHours = dbSpecialLeaveDays * 8;
+      var remainingHours = Math.max(0, totalSpecialHours - usedSpecialHours);
+      var remainingDays = Math.round((remainingHours / 8) * 10) / 10;
+
+      var safeOT = isNaN(totalOvertimeHours) ? 0 : Math.round(totalOvertimeHours * 10) / 10;
+
+      document.getElementById("statLateCount").innerHTML = `${lateCount + earlyCount} <span class="text-xs font-normal text-slate-500">次</span>`;
+      document.getElementById("statLateMinutes").innerText = `遲到 ${lateCount} 次 (${totalLateMins}分) | 早退 ${earlyCount} 次`;
+      document.getElementById("statOvertime").innerHTML = `${safeOT} <span class="text-xs font-normal text-slate-500">小時</span>`;
+      document.getElementById("statLeaveDays").innerHTML = `${leaveDaysCount} <span class="text-xs font-normal text-slate-500">天</span>`;
+      document.getElementById("statSpecialLeave").innerHTML = `${remainingHours} <span class="text-xs font-normal text-slate-500">小時</span>`;
+      document.getElementById("statSpecialLeaveSubText").innerText = `額度 ${dbSpecialLeaveDays}天 | 剩餘 ${remainingDays} 天 (${remainingHours}小時)`;
+    }
+
+    function openDayModal(dateStr, record) {
+      if (isScheduleLeaveMode) {
+        toggleDateScheduleOff(dateStr);
+        return;
+      }
+
+      activeTargetDate = dateStr;
+      var modal = document.getElementById("dayModal");
+      if (!modal) return;
+
+      var userAcc = accountsList.find(a => a.username.toLowerCase() === selectedUsername.toLowerCase()) || { name: selectedUsername, standardStart: "09:00", standardEnd: "18:00" };
+
+      document.getElementById("modalDateTitle").innerText = dateStr;
+      document.getElementById("modalUserSubTitle").innerText = `${userAcc.name} (${userAcc.username}) - 標準時間 (${userAcc.standardStart} - ${userAcc.standardEnd})`;
+
+      var banner = document.getElementById("modalStatusBanner");
+      var statusIcon = document.getElementById("modalStatusIcon");
+      var statusTitle = document.getElementById("modalStatusTitle");
+      var statusDesc = document.getElementById("modalStatusDesc");
+
+      var viewIn = document.getElementById("viewClockIn");
+      var viewOut = document.getElementById("viewClockOut");
+      var viewStatus = document.getElementById("viewStatus");
+      var viewNotes = document.getElementById("viewNotes");
+
+      var statusInfo = getComputedAttendanceStatus(record, userAcc);
+
+      if (record) {
+        viewIn.innerText = record.clockIn || "--:--";
+        viewOut.innerText = record.clockOut || "--:--";
+        viewStatus.innerText = statusInfo.statusText;
+        viewNotes.innerText = record.notes || "無備註紀錄";
+
+        if (statusInfo.isLate && statusInfo.isEarly) {
+          banner.className = "p-3.5 rounded-xl bg-amber-50 border border-amber-300 flex items-center space-x-3";
+          statusIcon.className = "fa-solid fa-clock text-amber-600 text-xl";
+          statusTitle.innerText = `考勤狀態：遲到 ${statusInfo.lateMins} 分鐘 / 早退`;
+          statusDesc.innerText = record.notes || `當日上班遲到 ${statusInfo.lateMins} 分鐘，且下班提前早退`;
+        } else if (statusInfo.isLate) {
+          banner.className = "p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-center space-x-3";
+          statusIcon.className = "fa-solid fa-clock text-amber-500 text-xl";
+          statusTitle.innerText = `考勤狀態：遲到 ${statusInfo.lateMins} 分鐘`;
+          statusDesc.innerText = record.notes || `當日上班遲到 ${statusInfo.lateMins} 分鐘 (超過寬限期及預設 ${userAcc.standardStart})`;
+        } else if (statusInfo.isEarly) {
+          banner.className = "p-3.5 rounded-xl bg-orange-50 border border-orange-200 flex items-center space-x-3";
+          statusIcon.className = "fa-solid fa-person-walking-arrow-right text-orange-500 text-xl";
+          statusTitle.innerText = "考勤狀態：早退";
+          statusDesc.innerText = record.notes || `當日下班低於預設時間 (${userAcc.standardEnd}) 提前離開`;
+        } else if (record.status === "特休") {
+          banner.className = "p-3.5 rounded-xl bg-amber-50 border border-amber-300 flex items-center space-x-3";
+          statusIcon.className = "fa-solid fa-umbrella-beach text-amber-600 text-xl";
+          statusTitle.innerText = "考勤狀態：特休 (" + (record.leaveHours || 8) + "小時)";
+          statusDesc.innerText = record.notes || "當日排定特休";
+        } else if (record.isScheduledLeave || record.status === "排休") {
+          banner.className = "p-3.5 rounded-xl bg-purple-50 border border-purple-200 flex items-center space-x-3";
+          statusIcon.className = "fa-solid fa-plane-departure text-purple-500 text-xl";
+          statusTitle.innerText = "考勤狀態：預先排休";
+          statusDesc.innerText = "當日設定為預先排假/排休";
+        } else {
+          banner.className = "p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center space-x-3";
+          statusIcon.className = "fa-solid fa-circle-check text-emerald-500 text-xl";
+          statusTitle.innerText = "考勤狀態：正常出勤";
+          statusDesc.innerText = "打卡紀錄正常完備";
+        }
+      } else {
+        viewIn.innerText = "--:--";
+        viewOut.innerText = "--:--";
+        viewStatus.innerText = "未打卡";
+        viewNotes.innerText = "無打卡與備註資料";
+
+        banner.className = "p-3.5 rounded-xl bg-slate-100 border border-slate-200 flex items-center space-x-3";
+        statusIcon.className = "fa-solid fa-circle-info text-slate-400 text-xl";
+        statusTitle.innerText = "無打卡紀錄";
+        statusDesc.innerText = "當天尚無 LINE 上下班打卡、排休或備註資料";
+      }
+
+      initSingleTimeDropdowns();
+      toggleSingleLeaveTypeFields();
+
+      modal.classList.remove("hidden");
+    }
+
+    function closeDayModal() {
+      var modal = document.getElementById("dayModal");
+      if (modal) modal.classList.add("hidden");
+    }
+
+    function initSingleTimeDropdowns() {
+      var startSelect = document.getElementById("singleSpecialLeaveStart");
+      var endSelect = document.getElementById("singleSpecialLeaveEnd");
+      if (!startSelect || startSelect.children.length > 0) return;
+
+      startSelect.innerHTML = "";
+      endSelect.innerHTML = "";
+
+      for (var h = 8; h <= 18; h++) {
+        for (var m of [0, 30]) {
+          if (h === 18 && m === 30) continue;
+          var timeStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+          
+          var optStart = document.createElement("option");
+          optStart.value = timeStr;
+          optStart.innerText = timeStr;
+          startSelect.appendChild(optStart);
+
+          var optEnd = document.createElement("option");
+          optEnd.value = timeStr;
+          optEnd.innerText = timeStr;
+          endSelect.appendChild(optEnd);
+        }
+      }
+
+      startSelect.value = "08:00";
+      endSelect.value = "09:00";
+      calcSingleSpecialLeaveHours();
+    }
+
+    function toggleSingleLeaveTypeFields() {
+      var type = document.getElementById("singleLeaveType").value;
+      var specialGroup = document.getElementById("singleSpecialLeaveTimeGroup");
+      var generalGroup = document.getElementById("singleGeneralLeaveHoursGroup");
+
+      if (type === "特休") {
+        specialGroup.classList.remove("hidden");
+        generalGroup.classList.add("hidden");
+      } else if (type === "取消請假") {
+        specialGroup.classList.add("hidden");
+        generalGroup.classList.add("hidden");
+      } else {
+        specialGroup.classList.add("hidden");
+        generalGroup.classList.remove("hidden");
+      }
+    }
+
+    function calcSingleSpecialLeaveHours() {
+      var startStr = document.getElementById("singleSpecialLeaveStart").value;
+      var endStr = document.getElementById("singleSpecialLeaveEnd").value;
+      
+      var startMins = timeToMinutes(startStr);
+      var endMins = timeToMinutes(endStr);
+
+      var summaryTotalHours = document.getElementById("singleSummaryTotalHours");
+      var summaryLunchNote = document.getElementById("singleSummaryLunchNote");
+      var btnSubmit = document.getElementById("btnSubmitSingleLeave");
+
+      if (endMins <= startMins) {
+        summaryTotalHours.innerText = "0";
+        if (summaryLunchNote) summaryLunchNote.classList.add("hidden");
+        if (btnSubmit) btnSubmit.disabled = true;
+        return 0;
+      }
+
+      var grossMins = endMins - startMins;
+      var overlapMins = Math.max(0, Math.min(endMins, 780) - Math.max(startMins, 720));
+
+      var netMins = grossMins - overlapMins;
+      var netHours = Math.round((netMins / 60) * 10) / 10;
+
+      if (overlapMins > 0) {
+        if (summaryLunchNote) summaryLunchNote.classList.remove("hidden");
+      } else {
+        if (summaryLunchNote) summaryLunchNote.classList.add("hidden");
+      }
+
+      summaryTotalHours.innerText = netHours;
+      if (btnSubmit) btnSubmit.disabled = false;
+      return netHours;
+    }
+
+    async function submitSingleDayLeave() {
+      if (!activeTargetDate) return;
+
+      var leaveType = document.getElementById("singleLeaveType").value;
+      var leaveReason = document.getElementById("singleLeaveReason").value.trim();
+      var hours = 8;
+      var notes = leaveReason;
+
+      if (leaveType === "特休") {
+        var startStr = document.getElementById("singleSpecialLeaveStart").value;
+        var endStr = document.getElementById("singleSpecialLeaveEnd").value;
+        hours = calcSingleSpecialLeaveHours();
+        if (hours <= 0) return;
+        var timeSlotStr = `${startStr}~${endStr}`;
+        notes = timeSlotStr + (leaveReason ? ` (${leaveReason})` : "");
+      } else if (leaveType !== "取消請假") {
+        hours = parseFloat(document.getElementById("singleGeneralLeaveHours").value) || 8;
+      }
+
+      var btnSubmit = document.getElementById("btnSubmitSingleLeave");
+      var btnText = document.getElementById("btnSubmitSingleLeaveText");
+      if (btnSubmit) btnSubmit.disabled = true;
+      if (btnText) btnText.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 儲存中...`;
+
+      try {
+        var url = `${gasUrl}?action=saveSingleLeave&username=${encodeURIComponent(selectedUsername)}&date=${encodeURIComponent(activeTargetDate)}&leaveType=${encodeURIComponent(leaveType)}&leaveHours=${hours}&notes=${encodeURIComponent(notes)}`;
+        var res = await fetch(url);
+        var json = await res.json();
+
+        if (json.result === "success") {
+          closeDayModal();
+          await fetchSpreadsheetData(true);
+        } else {
+          logDiag("儲存請假失敗: " + (json.message || "未知錯誤"));
+        }
+      } catch (e) {
+        logDiag("提交請假發生錯誤: " + e.message);
+      } finally {
+        if (btnSubmit) btnSubmit.disabled = false;
+        if (btnText) btnText.innerText = "儲存請假設定";
+      }
+    }
+  </script>
+</body>
+</html>
